@@ -502,33 +502,7 @@ export default function AdminDashboard() {
                           </div>
                         </div>
 
-                        {/* Actions */}
-                        <div className="mt-4 flex gap-2 border-t border-zostel-gray-dark/20 pt-3">
-                          {order.order_status === 'paid' && (
-                            <button
-                              onClick={() => updateOrderStatus(order.id, 'preparing')}
-                              className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold text-[10px] py-2 rounded-lg transition-all-custom"
-                            >
-                              Start Cooking
-                            </button>
-                          )}
-                          {order.order_status === 'preparing' && (
-                            <button
-                              onClick={() => updateOrderStatus(order.id, 'completed')}
-                              className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[10px] py-2 rounded-lg transition-all-custom"
-                            >
-                              Mark Completed
-                            </button>
-                          )}
-                          {order.order_status !== 'completed' && order.order_status !== 'failed' && (
-                            <button
-                              onClick={() => updateOrderStatus(order.id, 'failed')}
-                              className="bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[10px] px-3 py-2 rounded-lg transition-all-custom"
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </div>
+
                       </div>
                     ))
                   )}
