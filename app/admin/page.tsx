@@ -454,9 +454,9 @@ export default function AdminDashboard() {
                   <button onClick={fetchData} className="text-xs text-zostel-orange font-bold hover:underline">Refresh</button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="space-y-4">
                   {orders.length === 0 ? (
-                    <div className="col-span-full text-center py-12 text-gray-500 bg-white border rounded-xl">No orders available.</div>
+                    <div className="text-center py-12 text-gray-500 bg-white border rounded-xl">No orders available.</div>
                   ) : (
                     orders.map(order => (
                       <div key={order.id} className="bg-white rounded-xl border border-zostel-gray-dark/20 p-4 shadow-sm flex flex-col justify-between">
