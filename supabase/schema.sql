@@ -137,16 +137,16 @@ BEGIN
 
         -- Lock and update inventory ingredients for this menu item
         FOR v_req IN 
-            SELECT r.inventory_item_id, r.quantity_required, i.item_name, i.quantity_stock
+            SELECT r.inventory_item_id, r.quantity_required, i.item_name, i.quantity_stock, i.alert_threshold
             FROM menu_item_inventory_requirements r
             JOIN inventory i ON i.id = r.inventory_item_id
             WHERE r.menu_item_id = v_menu_item_id
             FOR UPDATE -- Row-level lock to prevent concurrent race conditions
         LOOP
-            -- Check for sufficient stock
-            IF v_req.quantity_stock < (v_req.quantity_required * v_qty) THEN
-                RAISE EXCEPTION 'Insufficient stock for %: need %, have %', 
-                    v_req.item_name, (v_req.quantity_required * v_qty), v_req.quantity_stock;
+            -- Check for sufficient stock including alert threshold buffer
+            IF (v_req.quantity_stock - (v_req.quantity_required * v_qty)) < v_req.alert_threshold THEN
+                RAISE EXCEPTION 'Insufficient stock for %: safety threshold is %, remaining stock would be %', 
+                    v_req.item_name, v_req.alert_threshold, (v_req.quantity_stock - (v_req.quantity_required * v_qty));
             END IF;
 
             -- Decrement stock
@@ -238,7 +238,7 @@ BEGIN
                 SELECT 1 
                 FROM menu_item_inventory_requirements r
                 JOIN inventory i ON i.id = r.inventory_item_id
-                WHERE r.menu_item_id = m.id AND i.quantity_stock < r.quantity_required
+                WHERE r.menu_item_id = m.id AND (i.quantity_stock - r.quantity_required) < i.alert_threshold
             ),
             true
         ) AS is_in_stock
