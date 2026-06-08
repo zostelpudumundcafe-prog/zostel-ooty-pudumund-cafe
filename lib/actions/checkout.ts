@@ -55,7 +55,7 @@ export async function createCheckoutOrder(data: CheckoutData) {
           p_customer_mobile: data.customerMobile,
           p_total_amount: totalAmount,
           p_razorpay_order_id: mockOrderId,
-          p_items: JSON.stringify(data.items),
+          p_items: data.items,
         }
       );
 
@@ -104,7 +104,7 @@ export async function createCheckoutOrder(data: CheckoutData) {
         p_customer_mobile: data.customerMobile,
         p_total_amount: totalAmount,
         p_razorpay_order_id: rpOrder.id,
-        p_items: JSON.stringify(data.items), // Send items as a JSON string to PostgreSQL
+        p_items: data.items,
       }
     );
 
@@ -162,7 +162,7 @@ export async function validateCartStock(items: CheckoutItem[]) {
     }
 
     const { data, error } = await supabaseAdmin.rpc('validate_cart_stock', {
-      p_items: JSON.stringify(items)
+      p_items: items
     });
 
     if (error) {
