@@ -265,7 +265,13 @@ export default function KitchenConsole() {
 
   const handleDismissAlert = () => {
     setNewOrderPopup(null);
+    // Stop web audio alarm (browser fallback)
     alarmManagerRef.current?.stop();
+    // Tell Android to stop native alarm sound too
+    const kitchenBridge = (window as any).kitchenBridge;
+    if (kitchenBridge && typeof kitchenBridge.postMessage === 'function') {
+      kitchenBridge.postMessage(JSON.stringify({ type: "STOP_SOUND" }));
+    }
   };
 
   const testWebAlarm = () => {

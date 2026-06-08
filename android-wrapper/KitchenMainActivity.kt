@@ -111,6 +111,12 @@ class KitchenMainActivity : AppCompatActivity() {
                         playAlarmSound()
                     }
                 }
+                "STOP_SOUND" -> {
+                    // Web popup was dismissed — stop the native alarm
+                    runOnUiThread {
+                        stopAlarmSound()
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing web message payload", e)
