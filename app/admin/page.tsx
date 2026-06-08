@@ -17,7 +17,11 @@ import {
   Lock, 
   Loader2,
   QrCode,
-  Printer
+  Printer,
+  BarChart3,
+  TrendingUp,
+  IndianRupee,
+  Star
 } from 'lucide-react';
 
 interface AdminOrder extends Order {
@@ -57,7 +61,19 @@ export default function AdminDashboard() {
   const [loginError, setLoginError] = useState('');
 
   // Dashboard navigation state
-  const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'inventory' | 'qrcodes'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'inventory' | 'qrcodes' | 'analytics'>('orders');
+
+  // Analytics state
+  const [analytics, setAnalytics] = useState<{
+    todayRevenue: number;
+    todayOrders: number;
+    weekRevenue: number;
+    weekOrders: number;
+    avgOrderValue: number;
+    topItems: Array<{ name: string; quantity: number; revenue: number }>;
+    statusBreakdown: Record<string, number>;
+    dailyRevenue: Array<{ date: string; revenue: number; orders: number }>;
+  } | null>(null);
 
   // Database resource states
   const [orders, setOrders] = useState<AdminOrder[]>([]);
@@ -147,6 +163,80 @@ export default function AdminDashboard() {
           .select('*')
           .order('item_name');
         setInventory(data || []);
+      } else if (activeTab === 'analytics') {
+        // Fetch all completed/paid orders for analytics
+        const { data: allOrders } = await supabase
+          .from('orders')
+          .select('*, order_items(quantity, price_at_sale, menu_items(name))')
+          .in('payment_status', ['captured'])
+          .order('created_at', { ascending: false });
+
+        if (allOrders) {
+          const now = new Date();
+          const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const weekStart = new Date(todayStart);
+          weekStart.setDate(weekStart.getDate() - 6);
+
+          const todayOrders = allOrders.filter((o: any) => new Date(o.created_at) >= todayStart);
+          const weekOrders = allOrders.filter((o: any) => new Date(o.created_at) >= weekStart);
+
+          // Top selling items aggregation
+          const itemMap: Record<string, { name: string; quantity: number; revenue: number }> = {};
+          allOrders.forEach((order: any) => {
+            order.order_items?.forEach((item: any) => {
+              const name = item.menu_items?.name || 'Unknown';
+              if (!itemMap[name]) itemMap[name] = { name, quantity: 0, revenue: 0 };
+              itemMap[name].quantity += item.quantity;
+              itemMap[name].revenue += item.quantity * item.price_at_sale;
+            });
+          });
+          const topItems = Object.values(itemMap)
+            .sort((a, b) => b.quantity - a.quantity)
+            .slice(0, 5);
+
+          // Status breakdown across ALL orders (including failed, pending)
+          const { data: allStatusOrders } = await supabase
+            .from('orders')
+            .select('order_status');
+          const statusBreakdown: Record<string, number> = {};
+          allStatusOrders?.forEach((o: any) => {
+            statusBreakdown[o.order_status] = (statusBreakdown[o.order_status] || 0) + 1;
+          });
+
+          // Daily revenue for last 7 days
+          const dailyMap: Record<string, { revenue: number; orders: number }> = {};
+          for (let i = 6; i >= 0; i--) {
+            const d = new Date(todayStart);
+            d.setDate(d.getDate() - i);
+            const key = d.toISOString().split('T')[0];
+            dailyMap[key] = { revenue: 0, orders: 0 };
+          }
+          weekOrders.forEach((o: any) => {
+            const key = new Date(o.created_at).toISOString().split('T')[0];
+            if (dailyMap[key]) {
+              dailyMap[key].revenue += o.total_amount;
+              dailyMap[key].orders += 1;
+            }
+          });
+          const dailyRevenue = Object.entries(dailyMap).map(([date, val]) => ({ date, ...val }));
+
+          const weekRevenue = weekOrders.reduce((s: number, o: any) => s + o.total_amount, 0);
+          const todayRevenue = todayOrders.reduce((s: number, o: any) => s + o.total_amount, 0);
+          const avgOrderValue = allOrders.length > 0
+            ? allOrders.reduce((s: number, o: any) => s + o.total_amount, 0) / allOrders.length
+            : 0;
+
+          setAnalytics({
+            todayRevenue,
+            todayOrders: todayOrders.length,
+            weekRevenue,
+            weekOrders: weekOrders.length,
+            avgOrderValue,
+            topItems,
+            statusBreakdown,
+            dailyRevenue,
+          });
+        }
       }
     } catch (e) {
       console.error(e);
@@ -413,11 +503,12 @@ export default function AdminDashboard() {
       </header>
 
       {/* Tabs list */}
-      <div className="bg-white border-b border-zostel-gray-dark/40 px-6 flex gap-4">
+      <div className="bg-white border-b border-zostel-gray-dark/40 px-6 flex gap-4 overflow-x-auto whitespace-nowrap scrollbar-none">
         {[
           { id: 'orders', label: 'Orders Queue', icon: ShoppingBag },
           { id: 'menu', label: 'Menu Editor', icon: BookOpen },
           { id: 'inventory', label: 'Inventory & Stock', icon: Package },
+          { id: 'analytics', label: 'Analytics', icon: BarChart3 },
           { id: 'qrcodes', label: 'Website QR', icon: QrCode }
         ].map(tab => {
           const Icon = tab.icon;
@@ -439,7 +530,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-6">
+      <main className="flex-1 p-6 pb-16">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-8 w-8 animate-spin text-zostel-orange" />
@@ -688,6 +779,179 @@ export default function AdminDashboard() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+
+            {/* ANALYTICS TAB */}
+            {activeTab === 'analytics' && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h2 className="text-lg font-bold text-zostel-charcoal">Sales Analytics</h2>
+                    <p className="text-xs text-gray-500 mt-0.5">Based on all successfully captured payments</p>
+                  </div>
+                  <button onClick={fetchData} className="text-xs text-zostel-orange font-bold hover:underline">Refresh</button>
+                </div>
+
+                {!analytics ? (
+                  <div className="flex items-center justify-center py-20">
+                    <Loader2 className="h-8 w-8 animate-spin text-zostel-orange" />
+                  </div>
+                ) : (
+                  <>
+                    {/* KPI Cards Row */}
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Today Revenue */}
+                      <div className="bg-white rounded-2xl border border-zostel-gray-dark/20 p-4 shadow-sm">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="h-8 w-8 bg-zostel-orange-subtle rounded-xl flex items-center justify-center">
+                            <IndianRupee className="h-4 w-4 text-zostel-orange" />
+                          </div>
+                          <span className="text-[10px] uppercase font-black text-gray-400 tracking-wider">Today</span>
+                        </div>
+                        <p className="text-2xl font-black text-zostel-charcoal">₹{analytics.todayRevenue.toFixed(0)}</p>
+                        <p className="text-xs text-gray-500 mt-1 font-semibold">{analytics.todayOrders} orders today</p>
+                      </div>
+
+                      {/* Weekly Revenue */}
+                      <div className="bg-white rounded-2xl border border-zostel-gray-dark/20 p-4 shadow-sm">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="h-8 w-8 bg-blue-50 rounded-xl flex items-center justify-center">
+                            <TrendingUp className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <span className="text-[10px] uppercase font-black text-gray-400 tracking-wider">This Week</span>
+                        </div>
+                        <p className="text-2xl font-black text-zostel-charcoal">₹{analytics.weekRevenue.toFixed(0)}</p>
+                        <p className="text-xs text-gray-500 mt-1 font-semibold">{analytics.weekOrders} orders this week</p>
+                      </div>
+
+                      {/* Average Order Value */}
+                      <div className="bg-white rounded-2xl border border-zostel-gray-dark/20 p-4 shadow-sm">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="h-8 w-8 bg-emerald-50 rounded-xl flex items-center justify-center">
+                            <BarChart3 className="h-4 w-4 text-emerald-600" />
+                          </div>
+                          <span className="text-[10px] uppercase font-black text-gray-400 tracking-wider">Avg Order</span>
+                        </div>
+                        <p className="text-2xl font-black text-zostel-charcoal">₹{analytics.avgOrderValue.toFixed(0)}</p>
+                        <p className="text-xs text-gray-500 mt-1 font-semibold">per transaction</p>
+                      </div>
+
+                      {/* Completed Orders */}
+                      <div className="bg-white rounded-2xl border border-zostel-gray-dark/20 p-4 shadow-sm">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="h-8 w-8 bg-purple-50 rounded-xl flex items-center justify-center">
+                            <Star className="h-4 w-4 text-purple-600" />
+                          </div>
+                          <span className="text-[10px] uppercase font-black text-gray-400 tracking-wider">Completed</span>
+                        </div>
+                        <p className="text-2xl font-black text-zostel-charcoal">{analytics.statusBreakdown['completed'] || 0}</p>
+                        <p className="text-xs text-gray-500 mt-1 font-semibold">orders fulfilled</p>
+                      </div>
+                    </div>
+
+                    {/* 7-Day Revenue Bar Chart */}
+                    <div className="bg-white rounded-2xl border border-zostel-gray-dark/20 p-5 shadow-sm">
+                      <h3 className="text-sm font-extrabold text-zostel-charcoal mb-4">Revenue — Last 7 Days</h3>
+                      {(() => {
+                        const maxRevenue = Math.max(...analytics.dailyRevenue.map(d => d.revenue), 1);
+                        return (
+                          <div className="flex items-end gap-2 h-36">
+                            {analytics.dailyRevenue.map((day) => {
+                              const heightPct = (day.revenue / maxRevenue) * 100;
+                              const label = new Date(day.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' });
+                              return (
+                                <div key={day.date} className="flex-1 flex flex-col items-center gap-1">
+                                  <span className="text-[9px] font-bold text-gray-500">
+                                    {day.revenue > 0 ? `₹${day.revenue.toFixed(0)}` : ''}
+                                  </span>
+                                  <div className="w-full flex items-end" style={{ height: '80px' }}>
+                                    <div
+                                      className="w-full rounded-t-lg bg-zostel-orange transition-all"
+                                      style={{ height: `${Math.max(heightPct, day.revenue > 0 ? 4 : 0)}%`, minHeight: day.revenue > 0 ? '4px' : '0' }}
+                                    />
+                                  </div>
+                                  <span className="text-[9px] text-gray-400 font-semibold text-center leading-tight">{label}</span>
+                                  {day.orders > 0 && (
+                                    <span className="text-[8px] bg-zostel-gray text-gray-500 rounded-full px-1.5 font-bold">{day.orders}</span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Top 5 Selling Items */}
+                      <div className="bg-white rounded-2xl border border-zostel-gray-dark/20 p-5 shadow-sm">
+                        <h3 className="text-sm font-extrabold text-zostel-charcoal mb-4">🏆 Top Selling Items</h3>
+                        {analytics.topItems.length === 0 ? (
+                          <p className="text-xs text-gray-400 italic">No sales data yet.</p>
+                        ) : (
+                          <div className="space-y-3">
+                            {analytics.topItems.map((item, i) => {
+                              const maxQty = analytics.topItems[0].quantity;
+                              return (
+                                <div key={item.name}>
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-xs font-bold text-zostel-charcoal flex items-center gap-1.5">
+                                      <span className={`text-[10px] font-black w-4 text-center ${i === 0 ? 'text-yellow-500' : i === 1 ? 'text-gray-400' : 'text-orange-400'}`}>
+                                        #{i + 1}
+                                      </span>
+                                      {item.name}
+                                    </span>
+                                    <div className="text-right">
+                                      <span className="text-[10px] font-black text-zostel-orange block">{item.quantity} sold</span>
+                                      <span className="text-[9px] text-gray-400">₹{item.revenue.toFixed(0)}</span>
+                                    </div>
+                                  </div>
+                                  <div className="w-full bg-zostel-gray rounded-full h-1.5">
+                                    <div
+                                      className="bg-zostel-orange h-1.5 rounded-full transition-all"
+                                      style={{ width: `${(item.quantity / maxQty) * 100}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Order Status Breakdown */}
+                      <div className="bg-white rounded-2xl border border-zostel-gray-dark/20 p-5 shadow-sm">
+                        <h3 className="text-sm font-extrabold text-zostel-charcoal mb-4">📊 Order Status Breakdown</h3>
+                        <div className="space-y-2.5">
+                          {Object.entries(analytics.statusBreakdown).map(([status, count]) => {
+                            const total = Object.values(analytics.statusBreakdown).reduce((a, b) => a + b, 0);
+                            const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                            const colorMap: Record<string, string> = {
+                              completed: 'bg-emerald-500',
+                              paid: 'bg-zostel-orange',
+                              preparing: 'bg-amber-400',
+                              pending: 'bg-gray-300',
+                              failed: 'bg-red-400',
+                            };
+                            const barColor = colorMap[status] || 'bg-gray-300';
+                            return (
+                              <div key={status}>
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-xs font-bold text-zostel-charcoal capitalize">{status}</span>
+                                  <span className="text-xs font-black text-gray-500">{count} <span className="text-gray-400 font-normal">({pct}%)</span></span>
+                                </div>
+                                <div className="w-full bg-zostel-gray rounded-full h-1.5">
+                                  <div className={`${barColor} h-1.5 rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
