@@ -209,3 +209,43 @@ CREATE POLICY "Allow admin full access to menu images" ON storage.objects
         (auth.role() = 'service_role' OR (auth.jwt()->>'email') IS NOT NULL)
     );
 
+-- 7. SECURE MULTI-INGREDIENT STOCK AVAILABILITY CHECKER
+CREATE OR REPLACE FUNCTION get_menu_items_with_stock()
+RETURNS TABLE (
+    id UUID,
+    name TEXT,
+    description TEXT,
+    price NUMERIC,
+    category TEXT,
+    image_url TEXT,
+    is_available BOOLEAN,
+    created_at TIMESTAMPTZ,
+    is_in_stock BOOLEAN
+) SECURITY DEFINER AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        m.id,
+        m.name,
+        m.description,
+        m.price,
+        m.category,
+        m.image_url,
+        m.is_available,
+        m.created_at,
+        COALESCE(
+            NOT EXISTS (
+                SELECT 1 
+                FROM menu_item_inventory_requirements r
+                JOIN inventory i ON i.id = r.inventory_item_id
+                WHERE r.menu_item_id = m.id AND i.quantity_stock < r.quantity_required
+            ),
+            true
+        ) AS is_in_stock
+    FROM menu_items m
+    WHERE m.is_available = true
+    ORDER BY m.category ASC, m.name ASC;
+END;
+$$ LANGUAGE plpgsql;
+
+

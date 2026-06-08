@@ -139,10 +139,14 @@ export default function MenuClient({ initialMenuItems }: MenuClientProps) {
         ) : (
           filteredItems.map((item) => {
             const cartQuantity = cart[item.id]?.quantity || 0;
+            const inStock = item.is_in_stock;
+            
             return (
               <div
                 key={item.id}
-                className="bg-white rounded-2xl p-4 flex gap-4 shadow-sm border border-zostel-gray-dark/20 transition-all duration-350 hover:shadow-md"
+                className={`bg-white rounded-2xl p-4 flex gap-4 shadow-sm border border-zostel-gray-dark/20 transition-all duration-350 hover:shadow-md ${
+                  !inStock ? 'opacity-65 grayscale-[30%]' : ''
+                }`}
               >
                 {/* Item Image or Placeholder */}
                 <div className="w-20 h-20 bg-zostel-orange-subtle rounded-xl flex-shrink-0 flex items-center justify-center relative overflow-hidden">
@@ -155,6 +159,15 @@ export default function MenuClient({ initialMenuItems }: MenuClientProps) {
                     />
                   ) : (
                     <Coffee className="h-8 w-8 text-zostel-orange" />
+                  )}
+                  
+                  {/* Sold Out Overlay */}
+                  {!inStock && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <span className="text-[9px] uppercase font-black text-white px-1.5 py-0.5 border border-white/50 rounded bg-zostel-charcoal/80">
+                        Sold Out
+                      </span>
+                    </div>
                   )}
                 </div>
 
@@ -175,7 +188,14 @@ export default function MenuClient({ initialMenuItems }: MenuClientProps) {
                     </span>
 
                     {/* Quantity selectors / Add button */}
-                    {isClient && cartQuantity > 0 ? (
+                    {!inStock ? (
+                      <button
+                        disabled
+                        className="bg-zostel-gray text-gray-400 font-bold text-xs px-4 py-2 rounded-full cursor-not-allowed border border-zostel-gray-dark/50"
+                      >
+                        Sold Out
+                      </button>
+                    ) : isClient && cartQuantity > 0 ? (
                       <div className="flex items-center bg-zostel-gray rounded-full p-1 border border-zostel-gray-dark/50 shadow-inner">
                         <button
                           onClick={() => removeFromCart(item.id)}

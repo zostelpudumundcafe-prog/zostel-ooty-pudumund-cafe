@@ -6,6 +6,7 @@ export interface MenuItem {
   category: string;
   image_url: string | null;
   is_available: boolean;
+  is_in_stock: boolean;
   created_at: string;
 }
 

@@ -58,6 +58,14 @@ export default function AdminDashboard() {
   // Forms states
   const [tableNumber, setTableNumber] = useState('1');
   const [showItemModal, setShowItemModal] = useState(false);
+  const [menuRequirements, setMenuRequirements] = useState<Array<{
+    inventory_item_id: string;
+    quantity_required: number;
+    item_name?: string;
+    unit_type?: string;
+  }>>([]);
+  const [selectedIngId, setSelectedIngId] = useState('');
+  const [ingQtyRequired, setIngQtyRequired] = useState(0);
   const [menuForm, setMenuForm] = useState({
     id: '',
     name: '',
@@ -110,12 +118,18 @@ export default function AdminDashboard() {
           .order('created_at', { ascending: false });
         setOrders(data || []);
       } else if (activeTab === 'menu') {
-        const { data } = await supabase
+        const { data: menuData } = await supabase
           .from('menu_items')
           .select('*')
           .order('category')
           .order('name');
-        setMenuItems(data || []);
+        setMenuItems(menuData || []);
+
+        const { data: invData } = await supabase
+          .from('inventory')
+          .select('id, item_name, unit_type')
+          .order('item_name');
+        setInventory(invData || []);
       } else if (activeTab === 'inventory') {
         const { data } = await supabase
           .from('inventory')
@@ -198,21 +212,56 @@ export default function AdminDashboard() {
     };
 
     let error;
+    let menuItemId = '';
+
     if (menuForm.id) {
       const { error: err } = await supabase
         .from('menu_items')
         .update(payload)
         .eq('id', menuForm.id);
+      menuItemId = menuForm.id;
       error = err;
     } else {
-      const { error: err } = await supabase
+      const { data: newItem, error: err } = await supabase
         .from('menu_items')
-        .insert(payload);
+        .insert(payload)
+        .select('id')
+        .single();
+      if (newItem) {
+        menuItemId = newItem.id;
+      }
       error = err;
     }
 
-    if (error) alert(error.message);
-    else {
+    if (error) {
+      alert(error.message);
+    } else {
+      // Sync ingredients in the requirements table
+      if (menuItemId) {
+        // A. Delete existing ingredients for this menu item
+        await supabase
+          .from('menu_item_inventory_requirements')
+          .delete()
+          .eq('menu_item_id', menuItemId);
+
+        // B. Insert new ingredient mappings
+        if (menuRequirements.length > 0) {
+          const insertPayload = menuRequirements.map(req => ({
+            menu_item_id: menuItemId,
+            inventory_item_id: req.inventory_item_id,
+            quantity_required: req.quantity_required,
+          }));
+
+          const { error: reqError } = await supabase
+            .from('menu_item_inventory_requirements')
+            .insert(insertPayload);
+
+          if (reqError) {
+            console.error("Failed to insert menu requirements:", reqError);
+          }
+        }
+      }
+
       setShowItemModal(false);
       fetchData();
     }
@@ -465,6 +514,9 @@ export default function AdminDashboard() {
                   <button
                     onClick={() => {
                       setMenuForm({ id: '', name: '', description: '', price: 0, category: 'Beverages', image_url: '', is_available: true });
+                      setMenuRequirements([]);
+                      setSelectedIngId('');
+                      setIngQtyRequired(0);
                       setShowItemModal(true);
                     }}
                     className="bg-zostel-orange hover:bg-zostel-orange-dark text-white font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition-all-custom"
@@ -499,7 +551,7 @@ export default function AdminDashboard() {
                           </td>
                           <td className="p-3 text-right flex justify-end gap-2">
                             <button
-                              onClick={() => {
+                              onClick={async () => {
                                 setMenuForm({
                                   id: item.id,
                                   name: item.name,
@@ -509,7 +561,32 @@ export default function AdminDashboard() {
                                   image_url: item.image_url || '',
                                   is_available: item.is_available,
                                 });
+                                setMenuRequirements([]);
+                                setSelectedIngId('');
+                                setIngQtyRequired(0);
                                 setShowItemModal(true);
+
+                                // Fetch current ingredients mapping for this menu item
+                                const { data: reqs } = await supabase
+                                  .from('menu_item_inventory_requirements')
+                                  .select(`
+                                    inventory_item_id,
+                                    quantity_required,
+                                    inventory (
+                                      item_name,
+                                      unit_type
+                                    )
+                                  `)
+                                  .eq('menu_item_id', item.id);
+                                
+                                if (reqs) {
+                                  setMenuRequirements(reqs.map((r: any) => ({
+                                    inventory_item_id: r.inventory_item_id,
+                                    quantity_required: r.quantity_required,
+                                    item_name: r.inventory?.item_name || 'Ingredient',
+                                    unit_type: r.inventory?.unit_type || 'grams',
+                                  })));
+                                }
                               }}
                               className="p-1 text-gray-400 hover:text-zostel-orange"
                             >
@@ -700,7 +777,7 @@ export default function AdminDashboard() {
       {/* MENU MODAL */}
       {showItemModal && (
         <div className="fixed inset-0 bg-zostel-charcoal/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm relative">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto relative">
             <h3 className="font-bold text-sm text-zostel-charcoal mb-4">
               {menuForm.id ? "Edit Menu Item" : "Create Menu Item"}
             </h3>
@@ -785,6 +862,101 @@ export default function AdminDashboard() {
                   />
                 </div>
               </div>
+
+              {/* INGREDIENTS REQUIREMENTS SECTION */}
+              <div className="border-t border-zostel-gray-dark/30 pt-3 space-y-2">
+                <label className="block text-[10px] uppercase font-bold text-gray-400">Ingredients Required (Stock Deduction)</label>
+                
+                {/* List of current requirements */}
+                {menuRequirements.length > 0 ? (
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                    {menuRequirements.map((req, index) => (
+                      <div key={index} className="flex justify-between items-center bg-zostel-gray p-2 rounded-lg text-xs">
+                        <span className="font-semibold text-zostel-charcoal">
+                          {req.item_name} — {req.quantity_required} {req.unit_type}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMenuRequirements(prev => prev.filter((_, i) => i !== index));
+                          }}
+                          className="text-red-500 hover:text-red-700 font-bold px-1"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-gray-500 italic">No ingredients mapped yet. (Will not check inventory levels on order)</p>
+                )}
+
+                {/* Inline form to add ingredient */}
+                <div className="grid grid-cols-12 gap-2 items-end bg-zostel-gray-light p-2.5 rounded-xl border border-zostel-gray-dark/30">
+                  <div className="col-span-6">
+                    <label className="block text-[9px] uppercase font-bold text-gray-500 mb-0.5">Select Ingredient</label>
+                    <select
+                      value={selectedIngId}
+                      onChange={(e) => setSelectedIngId(e.target.value)}
+                      className="w-full bg-white border border-zostel-gray-dark/40 rounded-lg p-1 text-[10px] text-zostel-charcoal focus:outline-none"
+                    >
+                      <option value="">-- Choose --</option>
+                      {inventory.map(item => (
+                        <option key={item.id} value={item.id}>
+                          {item.item_name} ({item.unit_type})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-span-3">
+                    <label className="block text-[9px] uppercase font-bold text-gray-500 mb-0.5">Quantity</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={ingQtyRequired || ''}
+                      onChange={(e) => setIngQtyRequired(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-white border border-zostel-gray-dark/40 rounded-lg p-1 text-[10px] text-zostel-charcoal focus:outline-none"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="col-span-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!selectedIngId) return;
+                        const ing = inventory.find(i => i.id === selectedIngId);
+                        if (!ing) return;
+                        
+                        // Check if already added
+                        if (menuRequirements.some(r => r.inventory_item_id === selectedIngId)) {
+                          alert("Ingredient already added. Remove it first to change quantity.");
+                          return;
+                        }
+
+                        if (ingQtyRequired <= 0) {
+                          alert("Please enter a valid quantity greater than 0.");
+                          return;
+                        }
+
+                        setMenuRequirements(prev => [...prev, {
+                          inventory_item_id: selectedIngId,
+                          quantity_required: ingQtyRequired,
+                          item_name: ing.item_name,
+                          unit_type: ing.unit_type,
+                        }]);
+                        
+                        // Reset form fields
+                        setSelectedIngId('');
+                        setIngQtyRequired(0);
+                      }}
+                      className="w-full bg-zostel-charcoal text-white hover:bg-zostel-charcoal-light font-bold text-[10px] py-1.5 rounded-lg text-center"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center gap-2 py-1">
                 <input
                   type="checkbox"

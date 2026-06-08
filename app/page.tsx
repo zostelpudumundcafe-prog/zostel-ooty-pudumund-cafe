@@ -22,13 +22,8 @@ export default async function MenuPage() {
     );
   }
 
-  // Fetch available menu items sorted by category and name
-  const { data, error } = await supabase
-    .from('menu_items')
-    .select('*')
-    .eq('is_available', true)
-    .order('category')
-    .order('name');
+  // Fetch available menu items with dynamic stock calculations using the database RPC function
+  const { data, error } = await supabase.rpc('get_menu_items_with_stock');
 
   if (error) {
     console.error("Error fetching menu items:", error);
