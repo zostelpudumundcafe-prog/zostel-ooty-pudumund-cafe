@@ -20,6 +20,17 @@ import {
   Printer
 } from 'lucide-react';
 
+interface AdminOrder extends Order {
+  order_items?: Array<{
+    id: string;
+    quantity: number;
+    price_at_sale: number;
+    menu_items?: {
+      name: string;
+    } | null;
+  }>;
+}
+
 export default function AdminDashboard() {
   // Check if supabase is configured
   if (!supabase) {
@@ -49,7 +60,7 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'orders' | 'menu' | 'inventory' | 'qrcodes'>('orders');
 
   // Database resource states
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -114,7 +125,7 @@ export default function AdminDashboard() {
       if (activeTab === 'orders') {
         const { data } = await supabase
           .from('orders')
-          .select('*')
+          .select('*, order_items(*, menu_items(name))')
           .order('created_at', { ascending: false });
         setOrders(data || []);
       } else if (activeTab === 'menu') {
@@ -464,6 +475,25 @@ export default function AdminDashboard() {
                             }`}>
                               {order.order_status}
                             </span>
+                          </div>
+
+                          {/* Order Items */}
+                          <div className="mt-3.5 space-y-1.5 bg-zostel-gray-light/40 p-2.5 rounded-xl border border-zostel-gray-dark/10">
+                            <h4 className="text-[9px] uppercase font-bold text-gray-400 tracking-wider">Items Ordered</h4>
+                            {order.order_items && order.order_items.length > 0 ? (
+                              <div className="space-y-1">
+                                {order.order_items.map((item) => (
+                                  <div key={item.id} className="flex justify-between text-xs text-zostel-charcoal font-semibold">
+                                    <span>
+                                      {item.menu_items?.name || 'Unknown Item'} <span className="text-zostel-orange font-bold text-[10px]">x{item.quantity}</span>
+                                    </span>
+                                    <span className="font-mono text-gray-500 font-medium">₹{item.price_at_sale * item.quantity}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[10px] text-gray-400 italic">No items details found.</p>
+                            )}
                           </div>
 
                           <div className="mt-4 border-t border-dashed border-zostel-gray-dark/30 pt-3 flex justify-between">

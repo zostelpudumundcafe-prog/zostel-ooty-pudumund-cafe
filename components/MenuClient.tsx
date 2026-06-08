@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { MenuItem } from '@/lib/supabase/types';
 import { Search, ShoppingBag, Plus, Minus, Coffee, Utensils, Moon } from 'lucide-react';
+import { validateCartStock } from '@/lib/actions/checkout';
 
 interface MenuClientProps {
   initialMenuItems: MenuItem[];
@@ -35,14 +36,30 @@ export default function MenuClient({ initialMenuItems }: MenuClientProps) {
     localStorage.setItem('zostel_cart', JSON.stringify(newCart));
   };
 
-  const addToCart = (item: MenuItem) => {
+  const addToCart = async (item: MenuItem) => {
     const newCart = { ...cart };
     if (newCart[item.id]) {
       newCart[item.id].quantity += 1;
     } else {
       newCart[item.id] = { item, quantity: 1 };
     }
-    saveCart(newCart);
+
+    const checkoutItems = Object.values(newCart).map(c => ({
+      menu_item_id: c.item.id,
+      quantity: c.quantity,
+      price: c.item.price
+    }));
+
+    try {
+      const validation = await validateCartStock(checkoutItems);
+      if (validation.success && !validation.isValid) {
+        alert(validation.errors?.[0] || "Cannot add more. Insufficient stock.");
+        return;
+      }
+      saveCart(newCart);
+    } catch (err) {
+      console.error("Failed to validate stock:", err);
+    }
   };
 
   const removeFromCart = (itemId: string) => {
