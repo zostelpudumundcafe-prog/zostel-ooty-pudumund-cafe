@@ -209,7 +209,7 @@ export default function KitchenConsole() {
       
       // Populate already alerted order IDs on initial fetch so they don't trigger alerts
       if (fetchedOrders.length > 0 && alertedOrderIds.current.size === 0) {
-        fetchedOrders.forEach(o => {
+        fetchedOrders.forEach((o:any) => {
           alertedOrderIds.current.add(o.id);
         });
       }
