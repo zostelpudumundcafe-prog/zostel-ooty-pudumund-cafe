@@ -37,6 +37,51 @@ export async function createCheckoutOrder(data: CheckoutData) {
       throw new Error("Invalid total amount.");
     }
 
+    // Check if Razorpay is fully configured with non-placeholder values
+    const isRazorpayConfigured = 
+      process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID && 
+      process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID !== 'rzp_test_your_key_id' &&
+      process.env.RAZORPAY_KEY_SECRET &&
+      process.env.RAZORPAY_KEY_SECRET !== 'your_razorpay_key_secret';
+
+    if (!isRazorpayConfigured) {
+      // 2. Direct Mock Checkout (No Razorpay Account Setup required)
+      const mockOrderId = `mock_${Date.now()}`;
+
+      const { data: orderId, error: txError } = await supabaseAdmin.rpc(
+        'place_order_and_decrement_inventory',
+        {
+          p_customer_name: data.customerName,
+          p_customer_mobile: data.customerMobile,
+          p_total_amount: totalAmount,
+          p_razorpay_order_id: mockOrderId,
+          p_items: JSON.stringify(data.items),
+        }
+      );
+
+      if (txError) {
+        console.error("Database transaction error:", txError);
+        throw new Error(`Inventory allocation failed: ${txError.message}`);
+      }
+
+      // Immediately mark the order as paid since it's a simulated direct checkout
+      const { error: updateError } = await supabaseAdmin
+        .from('orders')
+        .update({ payment_status: 'captured', order_status: 'paid' })
+        .eq('id', orderId);
+
+      if (updateError) {
+        console.error("Failed to update payment status for mock order:", updateError);
+        throw new Error(`Mock payment update failed: ${updateError.message}`);
+      }
+
+      return {
+        success: true,
+        orderId,
+        isMock: true,
+      };
+    }
+
     // Razorpay accepts amounts in the smallest currency unit (paise for INR)
     const amountInPaise = Math.round(totalAmount * 100);
 

@@ -97,8 +97,15 @@ export default function CartPage() {
         items: checkoutItems
       });
 
-      if (!res.success || !res.razorpayOrderId || !res.orderId) {
+      if (!res.success || !res.orderId) {
         throw new Error(res.error || "Failed to create checkout order.");
+      }
+
+      if (res.isMock) {
+        // Direct mock payment checkout redirection
+        localStorage.removeItem('zostel_cart');
+        router.push(`/success?order_id=${res.orderId}`);
+        return;
       }
 
       const { orderId, razorpayOrderId, amount, currency, keyId } = res;
