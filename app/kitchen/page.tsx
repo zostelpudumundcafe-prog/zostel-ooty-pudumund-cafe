@@ -441,7 +441,7 @@ export default function KitchenConsole() {
             <p className="text-xs text-gray-500 mt-1">There are no pending orders in the kitchen. Enjoy the break!</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="space-y-4">
             {orders.map((order) => (
               <div 
                 key={order.id} 
