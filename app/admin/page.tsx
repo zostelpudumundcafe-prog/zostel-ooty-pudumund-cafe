@@ -1029,9 +1029,7 @@ export default function AdminDashboard() {
                   >
                     <option value="quantity">Quantity (Pcs)</option>
                     <option value="grams">Grams</option>
-                    <option value="kg">Kilograms</option>
                     <option value="ml">Milliliters</option>
-                    <option value="liters">Liters</option>
                   </select>
                 </div>
               </div>

@@ -20,7 +20,7 @@ CREATE TABLE inventory (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     item_name TEXT NOT NULL UNIQUE,
     quantity_stock NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (quantity_stock >= 0),
-    unit_type TEXT NOT NULL CHECK (unit_type IN ('grams', 'quantity', 'ml', 'kg', 'liters')),
+    unit_type TEXT NOT NULL CHECK (unit_type IN ('grams', 'quantity', 'ml')),
     alert_threshold NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (alert_threshold >= 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

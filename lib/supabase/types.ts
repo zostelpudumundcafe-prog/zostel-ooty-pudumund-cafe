@@ -14,7 +14,7 @@ export interface InventoryItem {
   id: string;
   item_name: string;
   quantity_stock: number;
-  unit_type: 'grams' | 'quantity' | 'ml' | 'kg' | 'liters';
+  unit_type: 'grams' | 'quantity' | 'ml';
   alert_threshold: number;
   created_at: string;
 }
