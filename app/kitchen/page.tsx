@@ -116,6 +116,9 @@ export default function KitchenConsole() {
 
   // Web Alarm Manager Ref
   const alarmManagerRef = useRef<WebAlarmManager | null>(null);
+  
+  // Track order IDs for which alerts have already been played/shown to prevent duplicate notifications
+  const alertedOrderIds = useRef<Set<string>>(new Set());
 
   // Initialize session checks
   useEffect(() => {
@@ -158,16 +161,22 @@ export default function KitchenConsole() {
           event: '*', 
           schema: 'public', 
           table: 'orders' 
-        }, async (payload:any) => {
+        }, async (payload: any) => {
           console.log("Realtime order database change received:", payload);
-          if (payload.eventType === 'INSERT') {
-            const newOrder = payload.new as Order;
-            // Fetch order items & menu item names to show full detail
-            handleNewOrderArrival(newOrder.id);
-          } else {
-            // For updates/deletes (e.g., mark as done, cancel), simply refresh active list
-            fetchPendingOrders();
+          
+          const order = payload.new as Order;
+          
+          // Trigger popup/sound if order status transitions to 'paid'
+          if (order && order.order_status === 'paid') {
+            if (!alertedOrderIds.current.has(order.id)) {
+              alertedOrderIds.current.add(order.id);
+              handleNewOrderArrival(order.id);
+              return;
+            }
           }
+          
+          // Refresh active orders list
+          fetchPendingOrders();
         })
         .subscribe();
 
@@ -195,7 +204,15 @@ export default function KitchenConsole() {
         .order('created_at', { ascending: true }); // Chef works oldest-to-newest
 
       if (error) throw error;
-      setOrders(data || []);
+      const fetchedOrders = data || [];
+      setOrders(fetchedOrders);
+      
+      // Populate already alerted order IDs on initial fetch so they don't trigger alerts
+      if (fetchedOrders.length > 0 && alertedOrderIds.current.size === 0) {
+        fetchedOrders.forEach(o => {
+          alertedOrderIds.current.add(o.id);
+        });
+      }
     } catch (e) {
       console.error("Error fetching pending orders:", e);
     } finally {
