@@ -6,7 +6,7 @@ import Script from 'next/script';
 import Link from 'next/link';
 import { ArrowLeft, Trash2, Plus, Minus, CreditCard, Loader2 } from 'lucide-react';
 import { MenuItem } from '@/lib/supabase/types';
-import { createCheckoutOrder, handlePaymentFailure } from '@/lib/actions/checkout';
+import { createCheckoutOrder, handlePaymentFailure, validateCartStock } from '@/lib/actions/checkout';
 
 interface CartItem {
   item: MenuItem;
@@ -20,13 +20,44 @@ export default function CartPage() {
   const [customerMobile, setCustomerMobile] = useState('');
   const [loading, setLoading] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [isCheckingStock, setIsCheckingStock] = useState(false);
+
+  const checkStock = async (currentCart: typeof cart) => {
+    const items = Object.values(currentCart).map(c => ({
+      menu_item_id: c.item.id,
+      quantity: c.quantity,
+      price: c.item.price
+    }));
+
+    if (items.length === 0) {
+      setValidationErrors([]);
+      return;
+    }
+
+    setIsCheckingStock(true);
+    try {
+      const res = await validateCartStock(items);
+      if (res.success && !res.isValid) {
+        setValidationErrors(res.errors || []);
+      } else {
+        setValidationErrors([]);
+      }
+    } catch (err) {
+      console.error('Failed to validate stock:', err);
+    } finally {
+      setIsCheckingStock(false);
+    }
+  };
 
   useEffect(() => {
     setIsClient(true);
     const savedCart = localStorage.getItem('zostel_cart');
     if (savedCart) {
       try {
-        setCart(JSON.parse(savedCart));
+        const parsed = JSON.parse(savedCart);
+        setCart(parsed);
+        checkStock(parsed);
       } catch (e) {
         console.error('Failed to parse cart', e);
       }
@@ -38,7 +69,7 @@ export default function CartPage() {
     localStorage.setItem('zostel_cart', JSON.stringify(newCart));
   };
 
-  const updateQuantity = (itemId: string, delta: number) => {
+  const updateQuantity = async (itemId: string, delta: number) => {
     const newCart = { ...cart };
     if (!newCart[itemId]) return;
     const newQty = newCart[itemId].quantity + delta;
@@ -48,12 +79,14 @@ export default function CartPage() {
       newCart[itemId].quantity = newQty;
     }
     saveCart(newCart);
+    await checkStock(newCart);
   };
 
-  const removeItem = (itemId: string) => {
+  const removeItem = async (itemId: string) => {
     const newCart = { ...cart };
     delete newCart[itemId];
     saveCart(newCart);
+    await checkStock(newCart);
   };
 
   const cartItems = Object.values(cart);
@@ -90,6 +123,15 @@ export default function CartPage() {
     }));
 
     try {
+      // Re-verify stock before proceeding to payment
+      const validation = await validateCartStock(checkoutItems);
+      if (validation.success && !validation.isValid) {
+        setValidationErrors(validation.errors || []);
+        alert("Some items in your cart exceed available stock. Please adjust quantities.");
+        setLoading(false);
+        return;
+      }
+
       // 1. Create order on server and lock inventory
       const res = await createCheckoutOrder({
         customerName,
@@ -221,6 +263,21 @@ export default function CartPage() {
           <div className="flex-1 flex flex-col justify-between">
             {/* Scrollable list */}
             <div className="px-4 py-4 space-y-4 overflow-y-auto">
+              {validationErrors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl flex flex-col gap-1.5 shadow-sm">
+                  <div className="flex items-center gap-2 font-bold text-xs">
+                    <svg className="h-4 w-4 text-red-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    Stock Limit Exceeded
+                  </div>
+                  <ul className="list-disc pl-4 space-y-0.5 text-[10px] leading-relaxed text-red-600/90 font-medium">
+                    {validationErrors.map((err, i) => (
+                      <li key={i}>{err}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {cartItems.map((cartItem) => {
                 const itemTotal = cartItem.item.price * cartItem.quantity;
                 return (
@@ -313,7 +370,7 @@ export default function CartPage() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || validationErrors.length > 0}
                 className="w-full bg-zostel-orange hover:bg-zostel-orange-dark text-white font-bold text-sm py-4 rounded-xl shadow-md transition-all-custom flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (

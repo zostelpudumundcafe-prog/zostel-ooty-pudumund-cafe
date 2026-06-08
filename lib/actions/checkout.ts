@@ -151,3 +151,39 @@ export async function handlePaymentFailure(orderId: string) {
     return { success: false, error: error.message || "Failed to restore stock." };
   }
 }
+
+/**
+ * Server Action: Validates the proposed cart items against inventory and alert thresholds.
+ */
+export async function validateCartStock(items: CheckoutItem[]) {
+  try {
+    if (!items || items.length === 0) {
+      return { success: true, isValid: true };
+    }
+
+    const { data, error } = await supabaseAdmin.rpc('validate_cart_stock', {
+      p_items: JSON.stringify(items)
+    });
+
+    if (error) {
+      console.error("Error running validate_cart_stock RPC:", error);
+      return { success: false, error: "Failed to validate stock levels. Please try again." };
+    }
+
+    // Filter out rows that are invalid
+    const invalidItems = data?.filter((row: any) => !row.is_valid) || [];
+    if (invalidItems.length > 0) {
+      const errorMessages = invalidItems.map((row: any) => row.error_message);
+      return {
+        success: true,
+        isValid: false,
+        errors: errorMessages
+      };
+    }
+
+    return { success: true, isValid: true };
+  } catch (error: any) {
+    console.error("Error in validateCartStock:", error);
+    return { success: false, error: error.message || "An unexpected validation error occurred." };
+  }
+}

@@ -248,4 +248,52 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- 8. SECURE MULTI-ITEM CART INVENTORY VALIDATOR
+CREATE OR REPLACE FUNCTION validate_cart_stock(
+    p_items JSONB -- Expected array of objects: [{"menu_item_id": "uuid", "quantity": integer}]
+) RETURNS TABLE (
+    is_valid BOOLEAN,
+    error_message TEXT
+) SECURITY DEFINER AS $$
+DECLARE
+    v_req RECORD;
+BEGIN
+    FOR v_req IN 
+        WITH cart_items AS (
+            SELECT 
+                (elem->>'menu_item_id')::UUID AS menu_item_id,
+                (elem->>'quantity')::INT AS quantity
+            FROM jsonb_array_elements(p_items) AS elem
+        ),
+        required_stock AS (
+            SELECT 
+                r.inventory_item_id,
+                i.item_name,
+                i.quantity_stock,
+                i.alert_threshold,
+                i.unit_type,
+                SUM(r.quantity_required * c.quantity) AS total_required
+            FROM cart_items c
+            JOIN menu_item_inventory_requirements r ON r.menu_item_id = c.menu_item_id
+            JOIN inventory i ON i.id = r.inventory_item_id
+            GROUP BY r.inventory_item_id, i.item_name, i.quantity_stock, i.alert_threshold, i.unit_type
+        )
+        SELECT item_name, quantity_stock, alert_threshold, total_required, unit_type
+        FROM required_stock
+        WHERE (quantity_stock - total_required) < alert_threshold
+    LOOP
+        is_valid := false;
+        error_message := 'Insufficient stock for ' || v_req.item_name || ': requires ' || v_req.total_required || ' ' || v_req.unit_type || ', but only ' || (v_req.quantity_stock - v_req.alert_threshold) || ' ' || v_req.unit_type || ' is available.';
+        RETURN NEXT;
+    END LOOP;
+
+    -- If no loops occurred, it's valid
+    IF NOT FOUND THEN
+        is_valid := true;
+        error_message := NULL;
+        RETURN NEXT;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
 
