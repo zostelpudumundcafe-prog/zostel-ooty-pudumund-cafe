@@ -233,7 +233,7 @@ export default function KitchenConsole() {
 
       const orderData = data as KitchenOrder;
 
-      // Trigger the alert popup and alarm
+      // Always show the custom web popup modal
       setNewOrderPopup(orderData);
 
       // Create a nice list summary string for items
@@ -241,18 +241,18 @@ export default function KitchenConsole() {
         item => `• ${item.menu_items?.name || 'Unknown Item'} x${item.quantity}`
       ).join('\n') || '';
 
-      // Check if Android Native bridge is active
+      // Check if Android Native bridge is active — use it ONLY for playing alarm sound
       const kitchenBridge = (window as any).kitchenBridge;
       if (kitchenBridge && typeof kitchenBridge.postMessage === 'function') {
-        // Delegate to Android app: play system alarm & show native AlertDialog
+        // Tell Android to play the native alarm sound only (no native dialog)
         kitchenBridge.postMessage(JSON.stringify({
-          type: "NEW_ORDER",
+          type: "PLAY_SOUND_ONLY",
           customer_name: orderData.customer_name,
           total_amount: orderData.total_amount,
           items_summary: itemsList
         }));
       } else {
-        // Fallback: Play web audio alarm synthesiser
+        // Fallback: Play web audio alarm synthesiser in browser
         alarmManagerRef.current?.start();
       }
 

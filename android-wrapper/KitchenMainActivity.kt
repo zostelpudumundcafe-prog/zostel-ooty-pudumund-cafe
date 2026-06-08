@@ -94,14 +94,22 @@ class KitchenMainActivity : AppCompatActivity() {
         try {
             val json = org.json.JSONObject(messageJson)
             val type = json.optString("type")
-            if (type == "NEW_ORDER") {
-                val customerName = json.optString("customer_name", "Customer")
-                val totalAmount = json.optDouble("total_amount", 0.0)
-                val itemsSummary = json.optString("items_summary", "Order Details")
-
-                runOnUiThread {
-                    playAlarmSound()
-                    showNewOrderDialog(customerName, totalAmount, itemsSummary)
+            when (type) {
+                "NEW_ORDER" -> {
+                    // Full native handling: play alarm + show native dialog
+                    val customerName = json.optString("customer_name", "Customer")
+                    val totalAmount = json.optDouble("total_amount", 0.0)
+                    val itemsSummary = json.optString("items_summary", "Order Details")
+                    runOnUiThread {
+                        playAlarmSound()
+                        showNewOrderDialog(customerName, totalAmount, itemsSummary)
+                    }
+                }
+                "PLAY_SOUND_ONLY" -> {
+                    // Only play alarm — web page handles the popup UI itself
+                    runOnUiThread {
+                        playAlarmSound()
+                    }
                 }
             }
         } catch (e: Exception) {
