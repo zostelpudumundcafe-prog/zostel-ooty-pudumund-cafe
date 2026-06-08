@@ -4,6 +4,7 @@ import { MenuItem } from '@/lib/supabase/types';
 
 // Force dynamic rendering to always fetch fresh menu item availabilities
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function MenuPage() {
   if (!supabase) {
