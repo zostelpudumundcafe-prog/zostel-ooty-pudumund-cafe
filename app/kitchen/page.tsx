@@ -158,7 +158,7 @@ export default function KitchenConsole() {
           event: '*', 
           schema: 'public', 
           table: 'orders' 
-        }, async (payload) => {
+        }, async (payload:any) => {
           console.log("Realtime order database change received:", payload);
           if (payload.eventType === 'INSERT') {
             const newOrder = payload.new as Order;
