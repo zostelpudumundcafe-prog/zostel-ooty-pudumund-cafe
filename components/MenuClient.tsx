@@ -197,6 +197,11 @@ export default function MenuClient({ initialMenuItems }: MenuClientProps) {
                         {item.description}
                       </p>
                     )}
+                    {item.missing_ingredients && (
+                      <p className="text-[10px] text-red-600 font-bold mt-1">
+                        Out of {item.missing_ingredients}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex justify-between items-center mt-2">
@@ -208,9 +213,11 @@ export default function MenuClient({ initialMenuItems }: MenuClientProps) {
                     {!inStock ? (
                       <button
                         disabled
-                        className="bg-zostel-gray text-gray-400 font-bold text-xs px-4 py-2 rounded-full cursor-not-allowed border border-zostel-gray-dark/50"
+                        className="bg-zostel-gray text-gray-400 font-bold text-[10px] px-3.5 py-2 rounded-full cursor-not-allowed border border-zostel-gray-dark/50"
                       >
-                        Sold Out
+                        {item.missing_ingredients 
+                          ? `Out of ${item.missing_ingredients}` 
+                          : "Sold Out"}
                       </button>
                     ) : isClient && cartQuantity > 0 ? (
                       <div className="flex items-center bg-zostel-gray rounded-full p-1 border border-zostel-gray-dark/50 shadow-inner">

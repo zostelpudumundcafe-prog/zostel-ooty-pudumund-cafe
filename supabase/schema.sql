@@ -220,7 +220,8 @@ RETURNS TABLE (
     image_url TEXT,
     is_available BOOLEAN,
     created_at TIMESTAMPTZ,
-    is_in_stock BOOLEAN
+    is_in_stock BOOLEAN,
+    missing_ingredients TEXT
 ) SECURITY DEFINER AS $$
 BEGIN
     RETURN QUERY
@@ -241,7 +242,13 @@ BEGIN
                 WHERE r.menu_item_id = m.id AND (i.quantity_stock - r.quantity_required) < i.alert_threshold
             ),
             true
-        ) AS is_in_stock
+        ) AS is_in_stock,
+        (
+            SELECT string_agg(i.item_name, ', ')
+            FROM menu_item_inventory_requirements r
+            JOIN inventory i ON i.id = r.inventory_item_id
+            WHERE r.menu_item_id = m.id AND (i.quantity_stock - r.quantity_required) < i.alert_threshold
+        ) AS missing_ingredients
     FROM menu_items m
     WHERE m.is_available = true
     ORDER BY m.category ASC, m.name ASC;
