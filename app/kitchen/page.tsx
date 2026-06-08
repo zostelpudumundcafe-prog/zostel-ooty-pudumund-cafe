@@ -109,7 +109,7 @@ export default function KitchenConsole() {
   const [orders, setOrders] = useState<KitchenOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
-  const [newOrderPopup, setNewOrderPopup] = useState<KitchenOrder | null>(null);
+  const [newOrderQueue, setNewOrderQueue] = useState<KitchenOrder[]>([]);
   
   // Timer for relative order durations (e.g. "X minutes ago")
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
@@ -233,8 +233,8 @@ export default function KitchenConsole() {
 
       const orderData = data as KitchenOrder;
 
-      // Always show the custom web popup modal
-      setNewOrderPopup(orderData);
+      // Always add to the custom web popup modal queue
+      setNewOrderQueue(prev => [...prev, orderData]);
 
       // Create a nice list summary string for items
       const itemsList = orderData.order_items?.map(
@@ -264,14 +264,19 @@ export default function KitchenConsole() {
   };
 
   const handleDismissAlert = () => {
-    setNewOrderPopup(null);
-    // Stop web audio alarm (browser fallback)
-    alarmManagerRef.current?.stop();
-    // Tell Android to stop native alarm sound too
-    const kitchenBridge = (window as any).kitchenBridge;
-    if (kitchenBridge && typeof kitchenBridge.postMessage === 'function') {
-      kitchenBridge.postMessage(JSON.stringify({ type: "STOP_SOUND" }));
-    }
+    setNewOrderQueue(prev => {
+      const remaining = prev.slice(1);
+      if (remaining.length === 0) {
+        // Stop web audio alarm (browser fallback)
+        alarmManagerRef.current?.stop();
+        // Tell Android to stop native alarm sound too
+        const kitchenBridge = (window as any).kitchenBridge;
+        if (kitchenBridge && typeof kitchenBridge.postMessage === 'function') {
+          kitchenBridge.postMessage(JSON.stringify({ type: "STOP_SOUND" }));
+        }
+      }
+      return remaining;
+    });
   };
 
   const testWebAlarm = () => {
@@ -547,57 +552,60 @@ export default function KitchenConsole() {
       </main>
 
       {/* WEB FALLBACK POPUP DIALOG MODAL */}
-      {newOrderPopup && (
-        <div className="fixed inset-0 bg-zostel-charcoal/80 flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl relative border-2 border-zostel-orange overflow-hidden transform scale-100 transition-transform">
-            {/* Pulsing indicator banner */}
-            <div className="absolute top-0 left-0 right-0 h-2 bg-zostel-orange animate-pulse" />
-            
-            <div className="text-center mt-2">
-              <span className="bg-zostel-orange-subtle text-zostel-orange text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
-                New Order Received!
-              </span>
-              <h3 className="text-xl font-black text-zostel-charcoal mt-4 leading-snug">
-                {newOrderPopup.customer_name}
-              </h3>
-              <p className="text-xs text-gray-500 font-bold mt-0.5">Mobile: +91 {newOrderPopup.customer_mobile}</p>
-            </div>
-
-            {/* Order Slip Items inside modal */}
-            <div className="my-5 bg-zostel-gray-light rounded-2xl p-4 border border-zostel-gray-dark/30 max-h-48 overflow-y-auto">
-              <span className="text-[9px] font-black uppercase text-gray-400 tracking-wider block mb-2 border-b border-zostel-gray-dark/20 pb-1">
-                Items to Prepare
-              </span>
-              <div className="space-y-2.5">
-                {newOrderPopup.order_items?.map((item) => (
-                  <div key={item.id} className="flex justify-between items-center text-sm text-zostel-charcoal font-black">
-                    <span className="flex items-center gap-2">
-                      <span className="bg-zostel-orange text-white text-xs px-2 py-0.5 rounded-md font-bold">
-                        x{item.quantity}
-                      </span>
-                      {item.menu_items?.name || 'Unknown Item'}
-                    </span>
-                  </div>
-                ))}
+      {newOrderQueue.length > 0 && (() => {
+        const activePopup = newOrderQueue[0];
+        return (
+          <div className="fixed inset-0 bg-zostel-charcoal/80 flex items-center justify-center p-4 z-50 animate-fade-in">
+            <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl relative border-2 border-zostel-orange overflow-hidden transform scale-100 transition-transform">
+              {/* Pulsing indicator banner */}
+              <div className="absolute top-0 left-0 right-0 h-2 bg-zostel-orange animate-pulse" />
+              
+              <div className="text-center mt-2">
+                <span className="bg-zostel-orange-subtle text-zostel-orange text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
+                  New Order Received! {newOrderQueue.length > 1 && `(${1} of ${newOrderQueue.length})`}
+                </span>
+                <h3 className="text-xl font-black text-zostel-charcoal mt-4 leading-snug">
+                  {activePopup.customer_name}
+                </h3>
+                <p className="text-xs text-gray-500 font-bold mt-0.5">Mobile: +91 {activePopup.customer_mobile}</p>
               </div>
-            </div>
 
-            {/* Total display */}
-            <div className="flex justify-between items-center bg-zostel-orange-subtle rounded-xl p-3 mb-5 border border-zostel-orange/20">
-              <span className="text-xs font-bold text-gray-600">Total Amount Received</span>
-              <span className="text-sm font-extrabold text-zostel-orange">₹{newOrderPopup.total_amount}</span>
-            </div>
+              {/* Order Slip Items inside modal */}
+              <div className="my-5 bg-zostel-gray-light rounded-2xl p-4 border border-zostel-gray-dark/30 max-h-48 overflow-y-auto">
+                <span className="text-[9px] font-black uppercase text-gray-400 tracking-wider block mb-2 border-b border-zostel-gray-dark/20 pb-1">
+                  Items to Prepare
+                </span>
+                <div className="space-y-2.5">
+                  {activePopup.order_items?.map((item) => (
+                    <div key={item.id} className="flex justify-between items-center text-sm text-zostel-charcoal font-black">
+                      <span className="flex items-center gap-2">
+                        <span className="bg-zostel-orange text-white text-xs px-2 py-0.5 rounded-md font-bold">
+                          x{item.quantity}
+                        </span>
+                        {item.menu_items?.name || 'Unknown Item'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-            {/* Dismiss Button */}
-            <button
-              onClick={handleDismissAlert}
-              className="w-full bg-zostel-charcoal hover:bg-zostel-charcoal-light text-white font-extrabold text-sm py-4 rounded-2xl shadow-lg transition-all active:scale-98"
-            >
-              OK, Accept Order
-            </button>
+              {/* Total display */}
+              <div className="flex justify-between items-center bg-zostel-orange-subtle rounded-xl p-3 mb-5 border border-zostel-orange/20">
+                <span className="text-xs font-bold text-gray-600">Total Amount Received</span>
+                <span className="text-sm font-extrabold text-zostel-orange">₹{activePopup.total_amount}</span>
+              </div>
+
+              {/* Dismiss Button */}
+              <button
+                onClick={handleDismissAlert}
+                className="w-full bg-zostel-charcoal hover:bg-zostel-charcoal-light text-white font-extrabold text-sm py-4 rounded-2xl shadow-lg transition-all active:scale-98"
+              >
+                {newOrderQueue.length > 1 ? 'Next Order' : 'OK, Accept Order'}
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
